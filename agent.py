@@ -1,6 +1,5 @@
 from __future__ import division # makes 1/2 equal float 0.5 and not integer 0
 import random
-import operator
 
 BEST_K   = None
 BEST_EPS = None
@@ -34,4 +33,4 @@ class Qlearner:
       alpha * (r + gamma * max(Q[s_][a_] for a_ in actions))
 
   def get_action(self, s):
-    return sorted(Q[s].keys(), key=operator.itemgetter(1))[0]
+    return sorted(Q[s].keys(), key=Q[s].get)[-1]
