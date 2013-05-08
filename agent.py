@@ -6,11 +6,24 @@ BEST_EPS = None
 
 class Rmax:
   def __init__(self, rmax, gamma, K, actions, iters=100):
-    self.actions = actions
+    self.actions, self.rmax, self.gamma, self.iters, self.K = actions, rmax, gamma, iters, K
+    self.C[s], self.R[s], self.T[s], self.Q = {},{},{},{}
 
   def update(self, s,a,r,s_):
     pass
+
   def get_action(self, s):
+    actions, rmax, gamma, iters = self.actions, self.rmax, self.gamma, self.iters
+    C, R, T, K, Q = self.C, self.R, self.T, self.K, self.Q,
+
+    # continue exploring if C[s][a] < K
+    for a in actions:
+      if C[s][a] < K:
+        return a
+
+    # otherwise, begin exploiting
+
+
     return random.choice(self.actions)
 
 class Qlearner:
@@ -33,4 +46,6 @@ class Qlearner:
       alpha * (r + gamma * max(Q[s_][a_] for a_ in actions))
 
   def get_action(self, s):
+    if s not in Q:
+      raise "ERROR: in get_action: ",s," is not a key in Q"
     return sorted(Q[s].keys(), key=Q[s].get)[-1]
