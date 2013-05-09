@@ -16,6 +16,7 @@ class Rmax:
     U_ = U
     delta = float('inf')
     while delta >= epsilon*(1-gamma)/gamma:
+      # print "---Valiter---"
       U, delta = U_, 0
       for s in S:
         max_terms = []
@@ -25,12 +26,19 @@ class Rmax:
             if C[s,a] == 0:
               summation_terms += [0]
             else:
-              summation_terms += [ (T[s,a,s_] / C[s,a]) * U_[s_] ]
+              summation_terms += [ (T[s,a,s_] / C[s,a]) * U[s_] ]
+          # print summation_terms
           max_terms += [sum(summation_terms)]
-        U_[s] = R[s] + max(max_terms)
+        # print "maxterms:",max_terms
+        # print "max of terms:",max(max_terms)
+        U_[s] = R[s] + max(max_terms) + random.random()/10000
         newdiff = abs(U_[s] - U[s])
+        # print newdiff
         if newdiff > delta:
           delta = newdiff
+    # print "Valiter:"
+    # print U
+    # print ""
     return U
 
   def update(self, s,a,r,s_):
@@ -45,40 +53,59 @@ class Rmax:
     if len([state for state in self.S if self.T[s,a,state] > 0]) > 1:
       self.needs_updating = True
     # update R
-    self.R[s] = r
+    self.R[s_] = r
+    # initialize V if necessary
 
     # run Value Iteration if we need to
     if self.needs_updating or self.C[s,a] == self.K:
       self.V = self.valiter(self.S, self.T, self.C, self.R, self.gamma, self.epsilon)
 
   def get_action(self, s):
-    actions, rmax, gamma, iters = self.actions, self.rmax, self.gamma, self.iters
-    C, R, T, K, V, S = self.C, self.R, self.T, self.K, self.V, self.S
 
-    if s not in S:
+    if s not in self.S:
       self.needs_updating = True
-      # record that we've seen s and initialize C and T
-      S.add(s)
-      for a in actions:
-        C[s,a] = 0
-        for s_ in S:
-          T[s_,a,s] = 0
-          T[s,a,s_] = 0
+      # record that we've seen s
+      self.S.add(s)
+      # initialize V
+      self.V[s] = 0
+      # initialize R
+      self.R[s] = 0
+      # initialize C and T
+      for a in self.actions:
+        self.C[s,a] = 0
+        for s_ in self.S:
+          self.T[s_,a,s] = 0
+          self.T[s,a,s_] = 0
 
     # continue exploring if C[s,a] < K
-    utopian_actions = [a for a in actions if C[s,a] < K]
+    utopian_actions = [a for a in self.actions if self.C[s,a] < self.K]
+    # for debug in ["C["+str( s )+","+str(action)+"]: "+str(self.C[s,action]) for action in self.actions]:
+    #   print debug
     if utopian_actions:
-      return random.choice(utopian_actions)
+      # update C
+      choice = random.choice(utopian_actions)
+      self.C[s,choice] += 1
+      return choice
 
     # otherwise, begin exploiting
     action_values = {}
-    for a in actions:
-      reachable_states = [s_ for state,action,s_ in T if (state,action) == (s,a)]
-      action_values[a] = sum(V[s_] * T[s,a,s_]/C[s,a] for s_ in reachable_states)
+    for a in self.actions:
+      reachable_states = [s_ for state,action,s_ in self.T if (state,action) == (s,a)]
+      for s_ in reachable_states:
+        if s_ not in self.V:
+          self.V[s_] = 0
+        # print s_
+        # print self.V[s_]
+        # print self.T[s,a,s_]
+        # print self.C[s,a]
+      action_values[a] = sum(self.V[s_] * self.T[s,a,s_]/self.C[s,a] for s_ in reachable_states)
+    # print "Best actions:"
+    # print action_values
     best_action = sorted(action_values.keys(), key=action_values.get)[-1]
+    utopian_actions = [a for a in self.actions if self.C[s,a] < self.K]
 
     # update C
-    C[s, best_action] += 1
+    self.C[s, best_action] += 1
 
     return best_action
 
