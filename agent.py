@@ -1,113 +1,130 @@
 from __future__ import division # makes 1/2 equal float 0.5 and not integer 0
 import random
 
-BEST_K   = None
-BEST_EPS = None
+BEST_K   = 3
+BEST_EPS = 0.5
 
 class Rmax:
   def __init__(self, rmax, gamma, K, actions, iters=100):
     self.actions, self.rmax, self.gamma, self.iters, self.K = actions, rmax, gamma, iters, K
     self.C, self.R, self.T, self.V, self.S = {},{},{},{},set()
     self.needs_updating = False
-    self.epsilon = 0.1
+    self.epsilon = 1
+    self.update_count = 0
+
 
   def valiter(self, S, T, C, R, gamma, epsilon):
-    U = dict((s,0) for s in S)
-    U_ = U
+    U_ = dict((s,random.random()) for s in S)
     delta = float('inf')
     while delta >= epsilon*(1-gamma)/gamma:
-      # print "---Valiter---"
-      U, delta = U_, 0
+      U, delta = dict(U_), 0
       for s in S:
-        max_terms = []
-        for a in self.actions:
-          summation_terms = []
-          for s_ in S:
-            if C[s,a] == 0:
-              summation_terms += [0]
-            else:
-              summation_terms += [ (T[s,a,s_] / C[s,a]) * U[s_] ]
-          # print summation_terms
-          max_terms += [sum(summation_terms)]
+        # max_terms = []
+        # for a in self.actions:
+        #   summation_terms = []
+        #   for s_ in S:
+        #     if C[s,a] == 0:
+        #       summation_terms += [0]
+        #     else:
+        #       summation_terms += [ (T[s,a,s_] / C[s,a]) * U[s_] ]
+        #   # print summation_terms
+        #   max_terms += [sum(summation_terms)]
         # print "maxterms:",max_terms
         # print "max of terms:",max(max_terms)
-        U_[s] = R[s] + max(max_terms) + random.random()/10000
+        # U_[s] = R[s] + gamma * max(max_terms) + random.random()/10000
+        max_args = [ R[s,a] / C[s,a] for a in self.actions if (s,a) in R]
+        max_term = max(max_args) if max_args else 0
+        U_[s] = max_term + gamma * \
+            max( sum( 0 if C[s,a] == 0 else (T[s,a,s_] / C[s,a]) * U[s_] for s_ in S) for a in self.actions)
         newdiff = abs(U_[s] - U[s])
-        # print newdiff
         if newdiff > delta:
           delta = newdiff
-    # print "Valiter:"
-    # print U
-    # print ""
     return U
 
+  def record_new_state(self, s):
+
+    def init_C(new_state):
+      for action in self.actions:
+        if (new_state, action) not in self.C:
+          self.C[new_state, action] = 0
+
+    def init_T(new_state):
+      for old_state in self.S:
+        for action in self.actions:
+          if (new_state, action, old_state) not in self.T:
+            self.T[new_state, action, old_state] = 0
+          if (old_state, action, new_state) not in self.T:
+            self.T[old_state, action, new_state] = 0
+
+    # record that we've seen it
+    self.S.add(s)
+    # re-run value iteration
+    self.needs_updating = True
+    # initialize C
+    init_C(s)
+    # initialize T
+    init_T(s)
+
+
   def update(self, s,a,r,s_):
+    # if self.update_count % 10 == 0:
+    #   self.needs_updating = True
 
-    # initialize/update T
-    if (s,a,s_) not in self.T:
-      self.T[s,a,s_] = 1
-    else:
-      self.T[s,a,s_] += 1
-    # run value iteration if transition probabilities have changed
-    # i.e. if there's more than one state that (s,a) leads to
-    if len([state for state in self.S if self.T[s,a,state] > 0]) > 1:
-      self.needs_updating = True
+    # if the resulting state is new, initialize and re-run valiter
+    if s_ not in self.S:
+      self.record_new_state(s_)
+
+    # update T
+    self.T[s,a,s_] += 1
+
     # update R
-    self.R[s_] = r
-    # initialize V if necessary
+    if (s,a) not in self.R:
+      self.R[s,a] = r
+    else:
+      self.R[s,a] += r
 
-    # run Value Iteration if we need to
-    if self.needs_updating or self.C[s,a] == self.K:
+    # run Value Iteration if:
+    # - a new state has been observed
+    # - a state-action pair has been attempted K times
+    # - transition probabilities have changed, i.e. if there's more than one
+    #   state that (s,a) leads to
+    if self.needs_updating \
+       or self.C[s,a] == self.K \
+       or len([state for state in self.S if self.T[s,a,state] > 0]) > 1:
       self.V = self.valiter(self.S, self.T, self.C, self.R, self.gamma, self.epsilon)
+      self.needs_updating = False
+
 
   def get_action(self, s):
-
+    # if the resulting state is new, initialize and rerun valiter
     if s not in self.S:
-      self.needs_updating = True
-      # record that we've seen s
-      self.S.add(s)
-      # initialize V
-      self.V[s] = 0
-      # initialize R
-      self.R[s] = 0
-      # initialize C and T
-      for a in self.actions:
-        self.C[s,a] = 0
-        for s_ in self.S:
-          self.T[s_,a,s] = 0
-          self.T[s,a,s_] = 0
-
-    # continue exploring if C[s,a] < K
-    utopian_actions = [a for a in self.actions if self.C[s,a] < self.K]
-    # for debug in ["C["+str( s )+","+str(action)+"]: "+str(self.C[s,action]) for action in self.actions]:
-    #   print debug
-    if utopian_actions:
-      # update C
-      choice = random.choice(utopian_actions)
-      self.C[s,choice] += 1
-      return choice
+      self.record_new_state(s)
 
     # otherwise, begin exploiting
     action_values = {}
     for a in self.actions:
       reachable_states = [s_ for state,action,s_ in self.T if (state,action) == (s,a)]
-      for s_ in reachable_states:
-        if s_ not in self.V:
-          self.V[s_] = 0
-        # print s_
-        # print self.V[s_]
-        # print self.T[s,a,s_]
-        # print self.C[s,a]
-      action_values[a] = sum(self.V[s_] * self.T[s,a,s_]/self.C[s,a] for s_ in reachable_states)
-    # print "Best actions:"
-    # print action_values
-    best_action = sorted(action_values.keys(), key=action_values.get)[-1]
-    utopian_actions = [a for a in self.actions if self.C[s,a] < self.K]
+      if self.C[s,a] < self.K:
+        action_values[a] = self.rmax
+      else:
+        action_values[a] = sum(self.V[s_] * self.T[s,a,s_] / self.C[s,a] for s_ in reachable_states)
+
+    # print "C[",s,"]:", [self.C[s,a] for a in self.actions]
+    # print sorted(action_values.values())
+    top_value = sorted(action_values.values())[-1]
+    # print "Top value:", top_value
+    best_actions = [a for a,v in action_values.iteritems() if v == top_value]
+    # print "Best_actions:",best_actions
+    choice = random.choice(best_actions)
+    # print choice
+
+    if self.C[s,choice] > 150:
+      choice = random.choice(self.actions)
 
     # update C
-    self.C[s, best_action] += 1
+    self.C[s, choice] += 1
+    return choice
 
-    return best_action
 
 class Qlearner:
   def __init__(self,alpha, gamma, actions, epsilon):
@@ -116,6 +133,7 @@ class Qlearner:
     self.actions = actions
     self.Q = {}
     self.epsilon = 0.10
+
 
   def update(self, s,a,r,s_):
     gamma = self.gamma
@@ -130,6 +148,7 @@ class Qlearner:
     # compute update step
     Q[s][a] = (1 - alpha) * Q[s][a] + \
       alpha * (r + gamma * max(Q[s_][a_] for a_ in actions))
+
 
   def get_action(self, s):
     Q = self.Q
